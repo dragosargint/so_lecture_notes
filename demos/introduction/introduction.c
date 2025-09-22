@@ -1,18 +1,26 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 int var;
 
-int main()
+void usage(char **argv)
 {
-    printf("Enter an integer: ");
-    scanf("%d", &var);
+    fprintf(stderr, "usage: %s <integer>\n", argv[0]);
+    exit(1);
+}
 
-    while(1) {
-        printf("Address of var: %p, Value of var: %d\n", (void*)&var, var);
+int main(int argc, char **argv)
+{
+    if (argc < 2)
+        usage(argv);
+
+    var = atoi(argv[1]);
+    while (1)
+    {
+        printf("[%s pid=%d] Address of var: %p, Value of var: %d\n", argv[0], getpid(), &var, var);
         sleep(1);
     }
 
     return 0;
 }
-
