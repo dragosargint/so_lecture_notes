@@ -1063,14 +1063,262 @@ root@celeste-5:[mmap_allocation]# pmap $(pgrep mmap_allocation) | cat -n
 ```
 Now, we can see that we’ve successfully unmapped the second region as well, and both regions have disappeared from the address space.
 
+We’ve seen that `mmap()` is generally more powerful than `sbrk()`, because it gives you much more control over memory allocation than just extending the heap.
+* Flexible placement: With `mmap()`, you can request memory at (almost) any virtual address or let the OS choose for you.
+The `sbrk()` syscall can only extend or shrink the heap contiguously from the program break.
+* Permissions control: `mmap()` allows you to specify read, write, and execute permissions for each mapping.
+Memory obtained via `sbrk()` inherits the heap’s default permissions (read/write).
+
 ### Malloc and friends
-Now, unless we're writing a memory allocator it is very unlikely we use the `brk()` or `sbrk()` system call.
-A normal person will use `malloc()` and friends.
-That's right we learn about something and we discover is useless.
-Well jokes aside, the utility of knowing how the operating system works gives you more power than you can think.
-It helps you understand why certain things work, certain things don't, certain things might work faster, certain things might go slower.
-You want an example right?
-Well, a good question is the following `char *buf = malloc(10)` a
+Most of the time, when we want to allocate memory dynamically, we don’t call `brk()`, `sbrk()`, or `mmap()` directly.
+We all use `malloc()`.
+In fact, unless you’re writing a memory allocator, it’s very unlikely you’ll ever call the `brk()` or `sbrk()` system calls.
+A normal programmer just uses `malloc()` and friends.
+That’s right — sometimes you learn something that seems useless.
+Well, jokes aside, understanding how the operating system manages memory gives you more power than you might think — and we’ll see why in a moment.
+But first, let’s clarify the difference between `malloc()`, `mmap()`, and `sbrk()`.
+Both `mmap()` and `brk()/sbrk()` are system calls; they request memory directly from the operating system, so we classify them as System-level allocations.
+The `malloc()` function is implemented by the C standard library and is a Library-level allocation that makes memory management easier for the programmer.
+
+How does `malloc()` actually get memory?
+Well, `malloc()` doesn’t ask the OS for memory every time you call it.
+That would be slow and messy.
+Instead, it grabs big chunks of memory from the system using `sbrk()` or sometimes `mmap()`.
+This is usually called a memory pool.
+Once `malloc()` has a pool, it manages it for you.
+When you call `malloc(size)`, the library looks into its pool and finds a block big enough to satisfy your request.
+If it finds one, it marks it as occupied and returns the pointer to that block.
+If the pool doesn’t have enough free space, `malloc()` asks the OS for more memory using `sbrk()` or `mmap()` and then adds it to its pool.
+When you call `free(ptr)`, the memory isn’t returned to the OS immediately, especially for smaller allocation.
+`malloc()` just marks that block as free in its pool, so it can be reused by the next `malloc()` call.
+That’s why freeing memory is usually super fast — it’s just bookkeeping inside the pool.
+
+When requesting memory from the OS `malloc()` decides which system call to use based on the size of the requested allocation.
+The man page of the `malloc()` function speciefies that below a threshold called MMAP_THRESHOLD (which is 128 kB byt defau;lt) it will reserve system memory by expanding the heap using the `brk()/sbrk()` syscall.
+Above that threshold malloc will use `mmap()` syscall.
+
+Let’s now explore when `malloc()` does or doesn’t trigger a syscall using the following example(you can find the source code [here](/demos/malloc_allocation/)):
+```C
+#include "print_helpers.h"
+#include <stdlib.h>
+
+int main()
+{
+#include "print_helpers.h"
+#include <stdlib.h>
+
+int main()
+{
+    char *buf100B;
+    char *buf64KB;
+    char *buf200B;
+    char *buf100KB;
+    char *buf2MB;
+
+    PRINT_MSG("malloc of size 100B about to come ------------------------------------------\n");
+    buf100B = malloc(100);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("malloc of size 64KB about to come ------------------------------------------\n");
+    buf64KB = malloc(64 * 1024);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("malloc of size 200B about to come ------------------------------------------\n");
+    buf200B = malloc(200);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("malloc of size 100KB about to come ------------------------------------------\n");
+    buf100KB = malloc(100 * 1024);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("malloc of size 2MB about to come ------------------------------------------\n");
+    buf2MB = malloc(2 * 1024 * 1024);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("free of size 2MB about to come ---------------------------------------------\n");
+    free(buf2MB);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("free of size 100KB about to come -------------------------------------------\n");
+    free(buf100KB);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("free of size 200B about to come --------------------------------------------\n");
+    free(buf200B);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("free of size 64KB about to come --------------------------------------------\n");
+    free(buf64KB);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    PRINT_MSG("free of size 100B about to come --------------------------------------------\n");
+    free(buf100B);
+    PRINT_MSG("---------------------------------------------------------------------------\n");
+
+    return 0;
+}
+```
+We run the program under strace so we can observe if and when `malloc()` and `free()` actually trigger system calls.
+The messages delimit each operation clearly:
+```
+root@celeste-5:[malloc_allocation]# strace ./malloc_allocation
+write(1, "malloc of size 100B about to com"..., 77malloc of size 100B about to come ------------------------------------------
+) = 77
+getrandom("\xee\xcb\xb7\xfc\x86\xac\x57\x07", 8, GRND_NONBLOCK) = 8
+brk(NULL)                               = 0x405000
+brk(0x426000)                           = 0x426000
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "malloc of size 64KB about to com"..., 77malloc of size 64KB about to come ------------------------------------------
+) = 77
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "malloc of size 200B about to com"..., 77malloc of size 200B about to come ------------------------------------------
+) = 77
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "malloc of size 100KB about to co"..., 78malloc of size 100KB about to come ------------------------------------------
+) = 78
+brk(0x44f000)                           = 0x44f000
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "malloc of size 2MB about to come"..., 76malloc of size 2MB about to come ------------------------------------------
+) = 76
+mmap(NULL, 2101248, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7ffff7bbd000
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "free of size 2MB about to come -"..., 77free of size 2MB about to come ---------------------------------------------
+) = 77
+munmap(0x7ffff7bbd000, 2101248)         = 0
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "free of size 100KB about to come"..., 77free of size 100KB about to come -------------------------------------------
+) = 77
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "free of size 200B about to come "..., 77free of size 200B about to come --------------------------------------------
+) = 77
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "free of size 64KB about to come "..., 77free of size 64KB about to come --------------------------------------------
+) = 77
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+write(1, "free of size 100B about to come "..., 77free of size 100B about to come --------------------------------------------
+) = 77
+write(1, "--------------------------------"..., 76---------------------------------------------------------------------------
+) = 76
+exit_group(0)                           = ?
+```
+Let's break the output down:
+* First allocation (100B): We see brk().
+That’s because glibc didn’t have any heap pool yet.
+The very first `malloc()` extends the program break to get space on the heap.
+The actual 100B comes from this larger pool.
+* Second allocation (64KB): No syscall.
+The memory comes from the heap pool that was already extended in the first step.
+* Third allocation (200B): Again, no syscall.
+Same reason: glibc still has enough heap space to satisfy this request.
+* Fourth allocation (100KB): A new `brk()` call appears. The existing pool wasn’t large enough, so the heap had to be extended again.
+* Fifth allocation (2MB): Now we see `mmap()`.
+Since 2MB is larger than the `MMAP_THRESHOLD` (128 KB by default in glibc), `malloc()` bypasses the heap and directly creates a new mapping with `mmap()`.
+* Freeing 2MB buffer: We see `munmap()`. Large allocations that came from `mmap()` are returned directly to the OS.
+* Freeing the small/medium buffers (100B, 200B, 64KB, 100KB): No syscalls appear.
+`free()` doesn’t return this memory to the kernel — instead, it puts the chunks back into glibc’s heap pool.
+That memory can later be reused by another `malloc()` call, but it stays reserved in the process’s virtual address space until program termination.
+
+Ok, so let’s see one of the reasons why understanding how the OS actually does memory allocation is important.
+Let's look at the following program (you can find the source [here](/demos/malloc_segfault/))
+```
+#include <stdio.h>
+#include <stdlib.h>
+
+int main()
+{
+    char *buf;
+    size_t i;
+
+    printf("Allocate an 100B array of chars\n");
+    buf = malloc(100);
+
+    printf("Trying to access element 1000 in the array\n");
+    buf[1000] = 0;
+
+    printf("That's weird accesing element 1000 doesn't result in Seg Fault because address is %p\n", &buf[1000]);
+
+    printf("Press ENTER if you want to trigger a SEG FAULT\n");
+    getchar();
+
+    for(i = 0; i < 1000000; i++)
+    {
+        printf("Access element at index %ld address %p\n", i, &buf[i]);
+        buf[i] = 0;
+    }
+
+    return 0;
+}
+```
+This program is very simple.
+It creates a 100-character array with `malloc(100)`.
+It then tries to access element 1000 in that array.
+That shouldn’t work, right?
+We only asked for 100 bytes.
+Well, let’s see:
+```
+root@celeste-5:[malloc_segfault]# ./malloc_segfault 
+Allocate an 100B array of chars
+Trying to access element 1000 in the array
+That's weird accesing element 1000 doesn't result in Seg Fault because address is 0x405a98
+Press ENTER if you want to trigger a SEG FAULT
+```
+Ok, weird — accessing the 1001st element didn’t crash, even though the array only had 100 chars.
+Why does this happen?
+Let’s check with `pmap`:
+```
+pmap $(pgrep malloc_segfault) | cat -n
+     1  87094:   ./malloc_segfault
+     2  0000000000400000      4K r---- malloc_segfault
+     3  0000000000401000      4K r-x-- malloc_segfault
+     4  0000000000402000      4K r---- malloc_segfault
+     5  0000000000403000      4K r---- malloc_segfault
+     6  0000000000404000      4K rw--- malloc_segfault
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7fc3000      8K rw---   [ anon ]
+    16  00007ffff7fc5000     16K r----   [ anon ]
+    17  00007ffff7fc9000      8K r-x--   [ anon ]
+    18  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    19  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    20  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    21  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    22  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    23  00007ffffffde000    132K rw---   [ stack ]
+    24   total             2460K
+```
+Ok now we undestand why it didn't trigger a segfault.
+So the program tried to access address `0x405a98` which is still in the range of memory region at line 7 the heap.
+The heap starts at `0x405000` and extends up to `0x405000 + 132KB = 0x426000`.
+Since our access was still within that mapped region, no segfault occurred.
+But what happens if we keep going? Let’s continue the program:
+
+Let's continue the program and see:
+```
+...
+Access element at index 133455 address 0x425fff
+Access element at index 133456 address 0x426000
+Segmentation fault
+```
+Here we see that only when we touched address `0x426000` did we finally get a segfault.
+Why? Because that address is the first one outside the mapped heap region.
+
+### Memory Leaks
+TODO
 
 ### Stack Memory Allocation
 The stack is a crucial part of our program because it stores local variables and keeps the stack frames for each function.
@@ -1078,5 +1326,6 @@ When you declare a variable inside a function some bytes are reserved on the sta
 Allocation on the stack simply means moving the stack pointer register downward by the number of bytes needed.
 Similarly, freeing memory on the stack just means moving the stack pointer back up by adding that number of bytes.
 The interesting part is that there is no explicit system call to reserve stack memory.
-Interestingly, there is no explicit system call to reserve stack memory.
 In other words, stack memory is allocated indirectly, using a system-level allocation mechanism.
+
+TODO
