@@ -393,8 +393,6 @@ For each library, different subsections may have different permissions, dependin
 We will explore later how these permissions are implemented and why they are such an essential part of memory protection.
 
 Now, let's see how different sections are placed in memory.
-Note that when running the program, the actual addresses may differ.
-However, the general mapping and explanations remain valid.
 The program prints several addresses from variables allocated in different sections.
 It also sleeps for 20 seconds.
 So that we can explore its memory.
@@ -404,9 +402,9 @@ root@celeste-5:[memory_sections]: ./memory_sections
 msg[address 0x402008]: Hello world
 global_init_var[address 0x404028]: 80
 global_uninit_array[address 0x404038]: 
-stack_var[address 0x7ffc0fbce75c]: 5
-heap_var[address 0x7ffc0fbce750]: 0x7872a0
-*heap_var[address 0x7872a0]: HELLO
+stack_var[address 0x7fffffffdffc]: 5
+heap_var[address 0x7fffffffdff0]: 0x4052a0
+*heap_var[address 0x4052a0]: HELLO
 function[address 0x401146]
 ```
 
@@ -414,29 +412,29 @@ We will use `pmap` to explore the Virtual Address Space of the process.
 The `pmap` command shows the starting address of each memory region, the size of the region, its permissions, and the ELF it comes from (if it comes from an ELF).
 ```
 root@celeste-5:[memory_sections]: pmap $(pgrep memory_sections) | cat -n
-     1  67049:   ./memory_sections
+     1  83516:   ./memory_sections
      2  0000000000400000      4K r---- memory_sections
      3  0000000000401000      4K r-x-- memory_sections
      4  0000000000402000      4K r---- memory_sections
      5  0000000000403000      4K r---- memory_sections
      6  0000000000404000      4K rw--- memory_sections
-     7  0000000000787000    132K rw---   [ anon ]
-     8  00007f9a469e2000     12K rw---   [ anon ]
-     9  00007f9a469e5000    152K r---- libc.so.6
-    10  00007f9a46a0b000   1364K r-x-- libc.so.6
-    11  00007f9a46b60000    332K r---- libc.so.6
-    12  00007f9a46bb3000     16K r---- libc.so.6
-    13  00007f9a46bb7000      8K rw--- libc.so.6
-    14  00007f9a46bb9000     52K rw---   [ anon ]
-    15  00007f9a46be7000      8K rw---   [ anon ]
-    16  00007f9a46be9000      4K r---- ld-linux-x86-64.so.2
-    17  00007f9a46bea000    148K r-x-- ld-linux-x86-64.so.2
-    18  00007f9a46c0f000     40K r---- ld-linux-x86-64.so.2
-    19  00007f9a46c19000      8K r---- ld-linux-x86-64.so.2
-    20  00007f9a46c1b000      8K rw--- ld-linux-x86-64.so.2
-    21  00007ffc0fbaf000    132K rw---   [ stack ]
-    22  00007ffc0fbdd000     16K r----   [ anon ]
-    23  00007ffc0fbe1000      8K r-x--   [ anon ]
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7fc3000      8K rw---   [ anon ]
+    16  00007ffff7fc5000     16K r----   [ anon ]
+    17  00007ffff7fc9000      8K r-x--   [ anon ]
+    18  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    19  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    20  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    21  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    22  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    23  00007ffffffde000    132K rw---   [ stack ]
     24   total             2460K
 ```
 Now let's see how the output of the program matches the output of `pmap`:
@@ -456,13 +454,13 @@ Its address is `0x404038`, which again falls inside the region starting at `0x00
 In this case both .data and .bss share the same memory region with rw- permissions.
 
 * `stack_var` lives on the stack, so it should be located in a memory region with read and write permissions.
-Its address is `0x7ffc0fbce75c`, which belongs to the region on line 21 of the pmap output.
+Its address is `0x7fffffffdffc`, which belongs to the region on line 23 of the pmap output.
 This region is labeled [ stack ] and has rw- permissions, exactly as expected.
 
 * `heap_var` variable is a pointer variable that is actually located on the stack.
-Its address is `0x7ffc0fbce750`, which falls inside the stack region on line 21.
+Its address is `0x7fffffffdff0`, which falls inside the stack region on line 21.
 As a pointer variable it contains a pointer to another memory area, in this case a memory area allocated on the heap with `malloc()`.
-So the content of `heap_var`, i.e. address `0x7872a0` falls in region on line 7.
+So the content of `heap_var`, i.e. address `0x4052a0` falls in region on line 7.
 This is the heap of the program.
 The [anon] label means that the memory is anonymous and is not backed up by a file.
 
@@ -492,33 +490,33 @@ An example is the `malloc()` function.
 Now, let's take a step back and look again at the `pmap` output for the `memory_sections` process.
 ```
 root@celeste-5:[memory_sections]: pmap $(pgrep memory_sections) | cat -n
-     1  67049:   ./memory_sections
+     1  83516:   ./memory_sections
      2  0000000000400000      4K r---- memory_sections
      3  0000000000401000      4K r-x-- memory_sections
      4  0000000000402000      4K r---- memory_sections
      5  0000000000403000      4K r---- memory_sections
      6  0000000000404000      4K rw--- memory_sections
-     7  0000000000787000    132K rw---   [ anon ]
-     8  00007f9a469e2000     12K rw---   [ anon ]
-     9  00007f9a469e5000    152K r---- libc.so.6
-    10  00007f9a46a0b000   1364K r-x-- libc.so.6
-    11  00007f9a46b60000    332K r---- libc.so.6
-    12  00007f9a46bb3000     16K r---- libc.so.6
-    13  00007f9a46bb7000      8K rw--- libc.so.6
-    14  00007f9a46bb9000     52K rw---   [ anon ]
-    15  00007f9a46be7000      8K rw---   [ anon ]
-    16  00007f9a46be9000      4K r---- ld-linux-x86-64.so.2
-    17  00007f9a46bea000    148K r-x-- ld-linux-x86-64.so.2
-    18  00007f9a46c0f000     40K r---- ld-linux-x86-64.so.2
-    19  00007f9a46c19000      8K r---- ld-linux-x86-64.so.2
-    20  00007f9a46c1b000      8K rw--- ld-linux-x86-64.so.2
-    21  00007ffc0fbaf000    132K rw---   [ stack ]
-    22  00007ffc0fbdd000     16K r----   [ anon ]
-    23  00007ffc0fbe1000      8K r-x--   [ anon ]
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7fc3000      8K rw---   [ anon ]
+    16  00007ffff7fc5000     16K r----   [ anon ]
+    17  00007ffff7fc9000      8K r-x--   [ anon ]
+    18  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    19  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    20  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    21  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    22  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    23  00007ffffffde000    132K rw---   [ stack ]
     24   total             2460K
 ```
 Is there something special about the sizes of the memory regions?
-All memory regions in a program have sizes that are multiples of 4 KB.
+All memory regions have sizes that are multiples of 4 KB.
 Why is that?
 For two main reasons:
 * The operating system manages memory in pages, and the standard page size is 4 KB.
