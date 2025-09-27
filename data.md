@@ -71,6 +71,23 @@ But how is that possible?
 Believe it or not, to really understand this... we need an entire chapter.
 So let's dive into the magical realm of virtual memory!
 
+## Disclaimer
+The following sections deal with memory and addresses. To make the concepts easier to follow, most of the demos are run with ASLR (Address Space Layout Randomization) disabled.
+We'll cover ASLR later in this material.
+
+If you want to try the demos yourself (and we encourage you to do so), you can disable ASLR with:
+```
+echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+```
+
+When you’re done experimenting, make sure to restore it with:
+```
+echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+```
+
+Keep in mind that even with ASLR disabled, some addresses may still differ slightly from the ones shown in this material.
+Aside from these minor differences in numbers, the explanations and conclusions remain fully valid.
+
 ## Section 2.2: Executables
 Let’s say we have a C application that we want to run on our operating system.
 First, the application must be compiled and linked with the required libraries.
@@ -211,7 +228,7 @@ Disassembly of section .text:
 0000000000401151 <main>:
   401151:	55                   	push   rbp
   401152:	48 89 e5             	mov    rbp,rsp
-  401155: 48 83 ec 10          	sub    rsp,0x10
+  401155:	48 83 ec 10          	sub    rsp,0x10
 
 ```
 
@@ -221,7 +238,7 @@ This is the same address that `readelf` told us is the entry point.
 So `_start` is the entry point in our program and is responsible for setting up the execution environment before our `main()` function is called.
 The output of the `objdump` command shows the memory addresses of each instruction along with their corresponding assembly code.
 So what does the ELF actually contain for the .text section?
-For the main function, the content in the ELF file appears as a sequence of bytes, for example:
+For the `main()` function, the content in the ELF file appears as a sequence of bytes, for example:
 ```
 0x55 0x48 0x89 0xe5 0x48 0x83 0xec 0x10 ...
 ```
@@ -737,6 +754,7 @@ sbrk(-4096);
 sbrk(-2048);
 sbrk(-1024);
 ```
+
 Now, a question left for the reader.
 What happens if you call `sbrk()` with a negative increment that moves the program break below its initial point?
 
