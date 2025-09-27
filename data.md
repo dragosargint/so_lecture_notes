@@ -550,7 +550,7 @@ int main()
 
     initial_brk = sbrk(0);
     PRINT_PTR("The initial program break is:", initial_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     PRINT_MSG("Allocate 1024 bytes from System Memory using sbrk(1024)\n")
@@ -562,7 +562,7 @@ int main()
     }
     PRINT_PTR("OLD program break is:", old_brk);
     PRINT_PTR("NEW program break is:", new_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     PRINT_MSG("Allocate 2048 bytes from System Memory using sbrk(2048)\n")
@@ -574,7 +574,7 @@ int main()
     }
     PRINT_PTR("OLD program break is:", old_brk);
     PRINT_PTR("NEW program break is:", new_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     PRINT_MSG("Allocate 4096 bytes from System Memory using sbrk(4096)\n")
@@ -586,7 +586,7 @@ int main()
     }
     PRINT_PTR("OLD program break is:", old_brk);
     PRINT_PTR("NEW program break is:", new_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     return 0;
@@ -604,12 +604,12 @@ As stated befor `sbrk()` returns the old program break so to get the new one aft
 
 Let's run the program.
 Between each step, the program pauses so we can inspect the memory using `pmap`.
-We can continue the execution by pressing any key from the keyboard.
+We can continue the execution by pressing the ENTER key on the keyboard.
 
 ```
 root@celeste-5:[sbrk_allocation]# ./sbrk_allocation 
 The initial program break is: 0x0000000000405000
-Press anything to coninue
+Press ENTER to coninue
 ```
 ```
 root@celeste-5:[sbrk_allocation]# pmap $(pgrep sbrk_allocation) | cat -n
@@ -629,13 +629,13 @@ Let's Continue with the `sbrk(1024)`:
 ```
 root@celeste-5:[sbrk_allocation]# ./sbrk_allocation 
 The initial program break is: 0x0000000000405000
-Press anything to coninue
+Press ENTER to coninue
 
 
 Allocate 1024 bytes from System Memory using sbrk(1024)
 OLD program break is: 0x0000000000405000
 NEW program break is: 0x0000000000405400
-Press anything to coninue
+Press ENTER to coninue
 ```
 ```
 root@celeste-5:[sbrk_allocation]# pmap $(pgrep sbrk_allocation) | cat -n
@@ -659,19 +659,19 @@ Let's continue:
 ```
 root@celeste-5:[sbrk_allocation]# ./sbrk_allocation 
 The initial program break is: 0x0000000000405000
-Press anything to coninue
+Press ENTER to coninue
 
 
 Allocate 1024 bytes from System Memory using sbrk(1024)
 OLD program break is: 0x0000000000405000
 NEW program break is: 0x0000000000405400
-Press anything to coninue
+Press ENTER to coninue
 
 
 Allocate 2048 bytes from System Memory using sbrk(2048)
 OLD program break is: 0x0000000000405400
 NEW program break is: 0x0000000000405c00
-Press anything to coninue
+Press ENTER to coninue
 ```
 ```
 root@celeste-5:[sbrk_allocation]# pmap $(pgrep sbrk_allocation) | cat -n
@@ -692,25 +692,25 @@ Let's continue:
 ```
 root@celeste-5:[sbrk_allocation]# ./sbrk_allocation 
 The initial program break is: 0x0000000000405000
-Press anything to coninue
+Press ENTER to coninue
 
 
 Allocate 1024 bytes from System Memory using sbrk(1024)
 OLD program break is: 0x0000000000405000
 NEW program break is: 0x0000000000405400
-Press anything to coninue
+Press ENTER to coninue
 
 
 Allocate 2048 bytes from System Memory using sbrk(2048)
 OLD program break is: 0x0000000000405400
 NEW program break is: 0x0000000000405c00
-Press anything to coninue
+Press ENTER to coninue
 
 
 Allocate 4096 bytes from System Memory using sbrk(4096)
 OLD program break is: 0x0000000000405c00
 NEW program break is: 0x0000000000406c00
-Press anything to coninue
+Press ENTER to coninue
 ```
 ```
 root@celeste-5:~# pmap $(pgrep sbrk_allocation) | cat -n
@@ -756,6 +756,312 @@ sbrk(-1024);
 Now, a question left for the reader.
 What happens if you call `sbrk()` with a negative increment that moves the program break below its initial point?
 
+### Allocating new memory regions
+Another method for allocating memory — and actually a more powerful one, as you’ll see — is to request an entire region from the system. The OS exposes a syscall called `mmap()`.
+The `mmap()` syscall can do more than just reserve anonymous memory: it can also map files into memory, but we won’t go into that now.
+The function prototype looks like this
+```
+void *mmap(void addr[.length], size_t length, int prot, int flags, int fd, off_t offset);
+```
+Let’s look at its arguments:
+* `addr` — the preferred start address for the mapping.
+You can pass `NULL` to let the OS choose an appropriate location.
+This is the common choice, since you usually don’t know where free space in the Virtual Address Space exists.
+* `length` — the size of the mapping.
+This should be a multiple of the page size (typically 4096 bytes).
+If it isn’t, `mmap()` will effectively round the length to a multiple of page size.
+* `prot` — the desired permissions for the region: read, write, execute, or any combination.
+The macros for each permission are `PROT_READ`,  `PROT_WRITE` and `PROT_EXEC`.
+You can pass them in combinations using the logic or operation like `PROT_READ | PROT_WRITE | PROT_EXEC` or
+`PROT_READ | PROT_WRITE`.
+* `flags` — additional options, for example whether the mapping is private or shared, and whether it is anonymous or backed by a file.
+Since we want to reserve memory our mapping will be anonymous and since we don't want to share it with other processes it will be private.
+So, in our case the flags will be `MAP_PRIVATE | MAP_ANONYMOUS`.
+* `fd` — a file descriptor used when mapping a file. For anonymous mappings we set this to -1.
+* `offset` — the offset within the file (used only when mapping files).
+For anonymous mappings this is ignored but for consistency we should set it to 0.
+
+To free a memory region allocated with `mmap()` we must use `munmap()`.
+
+Now, let's look at an example (you can find the source code [here](/demos/mmap_allocation/)):
+```C
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
+
+int main(void)
+{
+    void *region_rw = NULL;
+    void *region_rwx = NULL;
+    int nr_pages = 10;
+    size_t alloc_size = nr_pages * 4096;
+
+    printf("Press ENTER to allocate %zu bytes (%d pages) as rwx\n", (size_t)alloc_size, nr_pages);
+    getchar();
+
+    region_rwx = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (region_rwx == MAP_FAILED)
+    {
+        fprintf(stderr, "mmap failed");
+        exit(1);
+    }
+    printf("Allocated rwx region at %p (size: %zu)\n\n", region_rwx, (size_t)alloc_size);
+
+    printf("Press ENTER to allocate %zu bytes (%d pages) as rw-\n", (size_t)alloc_size, nr_pages);
+    getchar();
+
+    region_rw = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (region_rw == MAP_FAILED)
+    {
+        fprintf(stderr, "mmap failed");
+        exit(1);
+    }
+    printf("Allocated rw- region at %p (size: %zu)\n\n", region_rw, (size_t)alloc_size);
+
+    printf("Press ENTER to unmap rwx region\n");
+    getchar();
+
+    if (munmap(region_rwx, alloc_size) == -1)
+    {
+        fprintf(stderr, "munmap failed");
+        exit(1);
+    }
+    printf("Unmaped rwx region\n\n");
+
+    printf("Press ENTER to unmap rw- region\n");
+    getchar();
+    if (munmap(region_rw, alloc_size) == -1)
+    {
+        fprintf(stderr, "munmap failed");
+        exit(1);
+    }
+    printf("Unmaped rw- region\n\n");
+
+    printf("Done. Press ENTER to exit.\n");
+    getchar();
+    return 0;
+}
+```
+Our little program uses `mmap()` to reserve two new memory regions from the System.
+One region is created with read, write, and execute permissions.
+That’s right — we get to taste the forbidden fruit and have a memory area that can both be written to and executed. The other region is created with read and write permissions.
+After that, the program deallocates both regions using the `munmap()` syscall.
+The program pauses at each step so we can inspect the mappings with tools like `pmap`.
+
+Let's run it and see what's going on:
+```
+root@celeste-5:[mmap_allocation]# ./mmap_allocation 
+Press ENTER to allocate 40960 bytes (10 pages) as rwx
+```
+```
+root@celeste-5:[mmap_allocation]# pmap $(pgrep mmap_allocation) | cat -n
+     1  85005:   ./mmap_allocation
+     2  0000000000400000      4K r---- mmap_allocation
+     3  0000000000401000      4K r-x-- mmap_allocation
+     4  0000000000402000      4K r---- mmap_allocation
+     5  0000000000403000      4K r---- mmap_allocation
+     6  0000000000404000      4K rw--- mmap_allocation
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7fc3000      8K rw---   [ anon ]
+    16  00007ffff7fc5000     16K r----   [ anon ]
+    17  00007ffff7fc9000      8K r-x--   [ anon ]
+    18  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    19  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    20  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    21  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    22  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    23  00007ffffffde000    132K rw---   [ stack ]
+    24   total             2460K
+```
+This how the address space looks initially before our `mmap()` took place.
+Let's continue
+```
+root@celeste-5:[mmap_allocation]# ./mmap_allocation 
+Press ENTER to allocate 40960 bytes (10 pages) as rwx
+
+Allocated rwx region at 0x7ffff7fb9000 (size: 40960)
+
+Press ENTER to allocate 40960 bytes (10 pages) as rw-
+```
+```
+root@celeste-5:[mmap_allocation]# pmap $(pgrep mmap_allocation) | cat -n
+     1  85005:   ./mmap_allocation
+     2  0000000000400000      4K r---- mmap_allocation
+     3  0000000000401000      4K r-x-- mmap_allocation
+     4  0000000000402000      4K r---- mmap_allocation
+     5  0000000000403000      4K r---- mmap_allocation
+     6  0000000000404000      4K rw--- mmap_allocation
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7fb9000     40K rwx--   [ anon ]
+    16  00007ffff7fc3000      8K rw---   [ anon ]
+    17  00007ffff7fc5000     16K r----   [ anon ]
+    18  00007ffff7fc9000      8K r-x--   [ anon ]
+    19  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    20  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    21  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    22  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    23  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    24  00007ffffffde000    132K rw---   [ stack ]
+    25   total             2500K
+```
+So, the program used `mmap()` to allocate 10 pages of memory, and we can see the starting address of this region: `0x7ffff7fb9000`.
+If we inspect the output of pmap, a new region indeed appears at line 15 with the same starting address.
+Its size is 40KB, which corresponds exactly to 10 pages, and it has rwx permissions just as we wanted.
+Let's continue with the second `mmap()`:
+```
+root@celeste-5:[mmap_allocation]# ./mmap_allocation
+Press ENTER to allocate 40960 bytes (10 pages) as rwx
+
+Allocated rwx region at 0x7ffff7fb9000 (size: 40960)
+
+Press ENTER to allocate 40960 bytes (10 pages) as rw-
+
+Allocated rw- region at 0x7ffff7faf000 (size: 40960)
+
+Press ENTER to unmap rwx region
+```
+```
+root@celeste-5:[mmap_allocation]# pmap $(pgrep mmap_allocation) | cat -n
+     1  85005:   ./mmap_allocation
+     2  0000000000400000      4K r---- mmap_allocation
+     3  0000000000401000      4K r-x-- mmap_allocation
+     4  0000000000402000      4K r---- mmap_allocation
+     5  0000000000403000      4K r---- mmap_allocation
+     6  0000000000404000      4K rw--- mmap_allocation
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7faf000     40K rw---   [ anon ]
+    16  00007ffff7fb9000     40K rwx--   [ anon ]
+    17  00007ffff7fc3000      8K rw---   [ anon ]
+    18  00007ffff7fc5000     16K r----   [ anon ]
+    19  00007ffff7fc9000      8K r-x--   [ anon ]
+    20  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    21  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    22  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    23  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    24  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    25  00007ffffffde000    132K rw---   [ stack ]
+    26   total             2540K
+```
+The same thing happened as before, but this time the new region has only rw- permissions just as we wanted.
+We can see both the memory regions we allocated at lines 15,16.
+Let's continue and unmap the first region:
+```
+root@celeste-5:[mmap_allocation]# ./mmap_allocation 
+Press ENTER to allocate 40960 bytes (10 pages) as rwx
+
+Allocated rwx region at 0x7ffff7fb9000 (size: 40960)
+
+Press ENTER to allocate 40960 bytes (10 pages) as rw-
+
+Allocated rw- region at 0x7ffff7faf000 (size: 40960)
+
+Press ENTER to unmap rwx region
+
+Unmaped rwx region
+
+Press ENTER to unmap rw- region
+```
+```
+root@celeste-5:[mmap_allocation]# pmap $(pgrep mmap_allocation) | cat -n
+     1  85005:   ./mmap_allocation
+     2  0000000000400000      4K r---- mmap_allocation
+     3  0000000000401000      4K r-x-- mmap_allocation
+     4  0000000000402000      4K r---- mmap_allocation
+     5  0000000000403000      4K r---- mmap_allocation
+     6  0000000000404000      4K rw--- mmap_allocation
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7faf000     40K rw---   [ anon ]
+    16  00007ffff7fc3000      8K rw---   [ anon ]
+    17  00007ffff7fc5000     16K r----   [ anon ]
+    18  00007ffff7fc9000      8K r-x--   [ anon ]
+    19  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    20  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    21  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    22  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    23  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    24  00007ffffffde000    132K rw---   [ stack ]
+    25   total             2500K
+```
+Now, we can see that our first mapped region — the one with rwx permissions — has disappeared, because we explicitly unmapped it.
+Let's continue with the last step:
+```
+root@celeste-5:[mmap_allocation]# ./mmap_allocation
+Press ENTER to allocate 40960 bytes (10 pages) as rwx
+
+Allocated rwx region at 0x7ffff7fb9000 (size: 40960)
+
+Press ENTER to allocate 40960 bytes (10 pages) as rw-
+
+Allocated rw- region at 0x7ffff7faf000 (size: 40960)
+
+Press ENTER to unmap rwx region
+
+Unmaped rwx region
+
+Press ENTER to unmap rw- region
+
+Unmaped rw- region
+
+Done. Press ENTER to exit.
+```
+```
+root@celeste-5:[mmap_allocation]# pmap $(pgrep mmap_allocation) | cat -n
+     1  85293:   ./mmap_allocation
+     2  0000000000400000      4K r---- mmap_allocation
+     3  0000000000401000      4K r-x-- mmap_allocation
+     4  0000000000402000      4K r---- mmap_allocation
+     5  0000000000403000      4K r---- mmap_allocation
+     6  0000000000404000      4K rw--- mmap_allocation
+     7  0000000000405000    132K rw---   [ anon ]
+     8  00007ffff7dbe000     12K rw---   [ anon ]
+     9  00007ffff7dc1000    152K r---- libc.so.6
+    10  00007ffff7de7000   1364K r-x-- libc.so.6
+    11  00007ffff7f3c000    332K r---- libc.so.6
+    12  00007ffff7f8f000     16K r---- libc.so.6
+    13  00007ffff7f93000      8K rw--- libc.so.6
+    14  00007ffff7f95000     52K rw---   [ anon ]
+    15  00007ffff7fc3000      8K rw---   [ anon ]
+    16  00007ffff7fc5000     16K r----   [ anon ]
+    17  00007ffff7fc9000      8K r-x--   [ anon ]
+    18  00007ffff7fcb000      4K r---- ld-linux-x86-64.so.2
+    19  00007ffff7fcc000    148K r-x-- ld-linux-x86-64.so.2
+    20  00007ffff7ff1000     40K r---- ld-linux-x86-64.so.2
+    21  00007ffff7ffb000      8K r---- ld-linux-x86-64.so.2
+    22  00007ffff7ffd000      8K rw--- ld-linux-x86-64.so.2
+    23  00007ffffffde000    132K rw---   [ stack ]
+    24   total             2460K
+```
+Now, we can see that we’ve successfully unmapped the second region as well, and both regions have disappeared from the address space.
 
 ### Malloc and friends
 Now, unless we're writing a memory allocator it is very unlikely we use the `brk()` or `sbrk()` system call.

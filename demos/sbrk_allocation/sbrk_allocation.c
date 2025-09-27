@@ -7,7 +7,7 @@ int main()
 
     initial_brk = sbrk(0);
     PRINT_PTR("The initial program break is:", initial_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     PRINT_MSG("Allocate 1024 bytes from System Memory using sbrk(1024)\n")
@@ -19,7 +19,7 @@ int main()
     }
     PRINT_PTR("OLD program break is:", old_brk);
     PRINT_PTR("NEW program break is:", new_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     PRINT_MSG("Allocate 2048 bytes from System Memory using sbrk(2048)\n")
@@ -31,7 +31,7 @@ int main()
     }
     PRINT_PTR("OLD program break is:", old_brk);
     PRINT_PTR("NEW program break is:", new_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     PRINT_MSG("Allocate 4096 bytes from System Memory using sbrk(4096)\n")
@@ -43,7 +43,7 @@ int main()
     }
     PRINT_PTR("OLD program break is:", old_brk);
     PRINT_PTR("NEW program break is:", new_brk);
-    PRINT_MSG("Press anything to coninue\n\n");
+    PRINT_MSG("Press ENTER to coninue\n\n");
     read(0, &c, sizeof(c));
 
     return 0;
